@@ -1,63 +1,180 @@
-/*
-  LiquidCrystal Library - display() and noDisplay()
 
- Demonstrates the use a 16x2 LCD display.  The LiquidCrystal
- library works with all LCD displays that are compatible with the
- Hitachi HD44780 driver. There are many of them out there, and you
- can usually tell them by the 16-pin interface.
+#include <Arduino.h>
+#include <SensirionI2cScd4x.h>
+#include <Wire.h>
+#include "Adafruit_PM25AQI.h"
 
- This sketch prints "Hello World!" to the LCD and uses the
- display() and noDisplay() functions to turn on and off
- the display.
+// macro definitions
+// make sure that we use the proper definition of NO_ERROR
+#ifdef NO_ERROR
+#undef NO_ERROR
+#endif
+#define NO_ERROR 0
 
- The circuit:
- * LCD RS pin to digital pin 12
- * LCD Enable pin to digital pin 11
- * LCD D4 pin to digital pin 5
- * LCD D5 pin to digital pin 4
- * LCD D6 pin to digital pin 3
- * LCD D7 pin to digital pin 2
- * LCD R/W pin to ground
- * 10K resistor:
- * ends to +5V and ground
- * wiper to LCD VO pin (pin 3)
+SensirionI2cScd4x sensor;
 
- Library originally added 18 Apr 2008
- by David A. Mellis
- library modified 5 Jul 2009
- by Limor Fried (http://www.ladyada.net)
- example added 9 Jul 2009
- by Tom Igoe
- modified 22 Nov 2010
- by Tom Igoe
- modified 7 Nov 2016
- by Arturo Guadalupi
+static char errorMessage[64];
+static int16_t error;
 
- This example code is in the public domain.
-
- http://www.arduino.cc/en/Tutorial/LiquidCrystalDisplay
-
-*/
-
-// include the library code:
-#include <LiquidCrystal.h>
-
-// initialize the library by associating any needed LCD interface pin
-// with the arduino pin number it is connected to
-const int rs = 2, en = 3, d4 = 6, d5 = 7, d6 = 8, d7 = 9;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+void PrintUint64(uint64_t& value) {
+    Serial.print("0x");
+    Serial.print((uint32_t)(value >> 32), HEX);
+    Serial.print((uint32_t)(value & 0xFFFFFFFF), HEX);
+}
 
 void setup() {
-  // set up the LCD's number of columns and rows:
-  lcd.begin(16, 2);
-  // Print a message to the LCD.
-  lcd.setCursor(0, 0);
-  lcd.print("Row 1");
-  lcd.setCursor(0, 1);
-  lcd.print("Row 2");
+
+    Serial.begin(115200);
+    while (!Serial) {
+        delay(100);
+    }
+    Serial.println("Adafruit PMSA003I Air Quality Sensor");
+  // Wait three seconds for sensor to boot up!
+  delay(3000);
+  if (! aqi.begin_I2C()) {      // connect to the sensor over I2C
+    Serial.println("Could not find PM 2.5 sensor!");
+    while (1) delay(10);
+  }
+  Serial.println("PM25 found!");
+
+  //CO2 Begins here
+    Wire.begin();
+    sensor.begin(Wire, SCD41_I2C_ADDR_62);
+
+    uint64_t serialNumber = 0;
+    delay(30);
+    // Ensure sensor is in clean state
+    error = sensor.wakeUp();
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute wakeUp(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+    }
+    error = sensor.stopPeriodicMeasurement();
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute stopPeriodicMeasurement(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+    }
+    error = sensor.reinit();
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute reinit(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+    }
+    // Read out information about the sensor
+    error = sensor.getSerialNumber(serialNumber);
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute getSerialNumber(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+        return;
+    }
+    Serial.print("serial number: ");
+    PrintUint64(serialNumber);
+    Serial.println();
+    //
+    // If temperature offset and/or sensor altitude compensation
+    // is required, you should call the respective functions here.
+    // Check out the header file for the function definitions.
+    // Start periodic measurements (5sec interval)
+    error = sensor.startPeriodicMeasurement();
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute startPeriodicMeasurement(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+        return;
+    }
+    //
+    // If low-power mode is required, switch to the low power
+    // measurement function instead of the standard measurement
+    // function above. Check out the header file for the definition.
+    // For SCD41, you can also check out the single shot measurement example.
+    //
 }
 
 void loop() {
 
-}
+    bool dataReady = false;
+    uint16_t co2Concentration = 0;
+    float temperature = 0.0;
+    float relativeHumidity = 0.0;
+    //
+    // Slow down the sampling to 0.2Hz.
+    //
+    delay(5000);
+    error = sensor.getDataReadyStatus(dataReady);
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute getDataReadyStatus(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+        return;
+    }
+    while (!dataReady) {
+        delay(100);
+        error = sensor.getDataReadyStatus(dataReady);
+        if (error != NO_ERROR) {
+            Serial.print("Error trying to execute getDataReadyStatus(): ");
+            errorToString(error, errorMessage, sizeof errorMessage);
+            Serial.println(errorMessage);
+            return;
+        }
+    }
+    //
+    // If ambient pressure compenstation during measurement
+    // is required, you should call the respective functions here.
+    // Check out the header file for the function definition.
+    error =
+        sensor.readMeasurement(co2Concentration, temperature, relativeHumidity);
+    if (error != NO_ERROR) {
+        Serial.print("Error trying to execute readMeasurement(): ");
+        errorToString(error, errorMessage, sizeof errorMessage);
+        Serial.println(errorMessage);
+        return;
+    }
+    //
+    // Print results in physical units.
+    Serial.print("CO2 concentration [ppm]: ");
+    Serial.print(co2Concentration);
+    Serial.println();
+    Serial.print("Temperature [°C]: ");
+    Serial.print(temperature);
+    Serial.println();
+    Serial.print("Relative Humidity [RH]: ");
+    Serial.print(relativeHumidity);
+    Serial.println();
 
+    PM25_AQI_Data data;
+  
+  if (! aqi.read(&data)) {
+    Serial.println("Could not read from AQI");
+    delay(500);  // try again in a bit!
+    return;
+  }
+  Serial.println("AQI reading success");
+
+  Serial.println(F("---------------------------------------"));
+  Serial.println(F("Concentration Units (standard)"));
+  Serial.print(F("PM 1.0: ")); Serial.print(data.pm10_standard);
+  Serial.print(F("\t\tPM 2.5: ")); Serial.print(data.pm25_standard);
+  Serial.print(F("\t\tPM 10: ")); Serial.println(data.pm100_standard);
+  Serial.println(F("---------------------------------------"));
+  Serial.println(F("Concentration Units (environmental)"));
+  Serial.print(F("PM 1.0: ")); Serial.print(data.pm10_env);
+  Serial.print(F("\t\tPM 2.5: ")); Serial.print(data.pm25_env);
+  Serial.print(F("\t\tPM 10: ")); Serial.println(data.pm100_env);
+  Serial.println(F("---------------------------------------"));
+  Serial.print(F("Particles > 0.3um / 0.1L air:")); Serial.println(data.particles_03um);
+  Serial.print(F("Particles > 0.5um / 0.1L air:")); Serial.println(data.particles_05um);
+  Serial.print(F("Particles > 1.0um / 0.1L air:")); Serial.println(data.particles_10um);
+  Serial.print(F("Particles > 2.5um / 0.1L air:")); Serial.println(data.particles_25um);
+  Serial.print(F("Particles > 5.0um / 0.1L air:")); Serial.println(data.particles_50um);
+  Serial.print(F("Particles > 10 um / 0.1L air:")); Serial.println(data.particles_100um);
+  Serial.println(F("---------------------------------------"));
+  Serial.println(F("AQI"));
+  Serial.print(F("PM2.5 AQI US: ")); Serial.print(data.aqi_pm25_us);
+  Serial.print(F("\tPM10  AQI US: ")); Serial.println(data.aqi_pm100_us);
+  Serial.println(F("---------------------------------------"));
+  Serial.println();
+
+}

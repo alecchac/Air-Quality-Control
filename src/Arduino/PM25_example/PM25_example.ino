@@ -15,25 +15,13 @@ void setup() {
   // Wait for serial monitor to open
   Serial.begin(115200);
   while (!Serial) delay(10);
-
   Serial.println("Adafruit PMSA003I Air Quality Sensor");
-
   // Wait three seconds for sensor to boot up!
   delay(3000);
-
-  // If using serial, initialize it and set baudrate before starting!
-  // Uncomment one of the following
-  //Serial1.begin(9600);
-  //pmSerial.begin(9600);
-
-  // There are 3 options for connectivity!
   if (! aqi.begin_I2C()) {      // connect to the sensor over I2C
-  //if (! aqi.begin_UART(&Serial1)) { // connect to the sensor over hardware serial
-  //if (! aqi.begin_UART(&pmSerial)) { // connect to the sensor over software serial 
     Serial.println("Could not find PM 2.5 sensor!");
     while (1) delay(10);
   }
-
   Serial.println("PM25 found!");
 }
 
@@ -42,7 +30,6 @@ void loop() {
   
   if (! aqi.read(&data)) {
     Serial.println("Could not read from AQI");
-    
     delay(500);  // try again in a bit!
     return;
   }
@@ -69,8 +56,6 @@ void loop() {
   Serial.println(F("AQI"));
   Serial.print(F("PM2.5 AQI US: ")); Serial.print(data.aqi_pm25_us);
   Serial.print(F("\tPM10  AQI US: ")); Serial.println(data.aqi_pm100_us);
-//  Serial.print(F("PM2.5 AQI China: ")); Serial.print(data.aqi_pm25_china);
-//  Serial.print(F("\tPM10  AQI China: ")); Serial.println(data.aqi_pm100_china);
   Serial.println(F("---------------------------------------"));
   Serial.println();
 
