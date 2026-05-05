@@ -3,6 +3,7 @@
 #include <SensirionI2cScd4x.h>
 #include <Wire.h>
 #include "Adafruit_PM25AQI.h"
+#include <LiquidCrystal.h>
 
 // macro definitions
 // make sure that we use the proper definition of NO_ERROR
@@ -12,9 +13,15 @@
 #define NO_ERROR 0
 
 SensirionI2cScd4x sensor;
+Adafruit_PM25AQI aqi = Adafruit_PM25AQI();
 
 static char errorMessage[64];
 static int16_t error;
+
+// initialize the library by associating any needed LCD interface pin
+// with the arduino pin number it is connected to
+const int rs = 2, en = 3, d4 = 6, d5 = 7, d6 = 8, d7 = 9;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 void PrintUint64(uint64_t& value) {
     Serial.print("0x");
@@ -23,7 +30,13 @@ void PrintUint64(uint64_t& value) {
 }
 
 void setup() {
-
+    // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+  // Print a message to the LCD.
+  lcd.setCursor(0, 0);
+  lcd.print("Setting up");
+  lcd.setCursor(0, 1);
+  lcd.print("Setting up");
     Serial.begin(115200);
     while (!Serial) {
         delay(100);
@@ -98,6 +111,7 @@ void loop() {
     bool dataReady = false;
     uint16_t co2Concentration = 0;
     float temperature = 0.0;
+    float temperatureF = 0.0;
     float relativeHumidity = 0.0;
     //
     // Slow down the sampling to 0.2Hz.
@@ -132,13 +146,14 @@ void loop() {
         Serial.println(errorMessage);
         return;
     }
+    temperatureF = (temperature*1.8)+32;
     //
     // Print results in physical units.
     Serial.print("CO2 concentration [ppm]: ");
     Serial.print(co2Concentration);
     Serial.println();
-    Serial.print("Temperature [°C]: ");
-    Serial.print(temperature);
+    Serial.print("Temperature [°F]: ");
+    Serial.print(temperatureF);
     Serial.println();
     Serial.print("Relative Humidity [RH]: ");
     Serial.print(relativeHumidity);
@@ -151,7 +166,6 @@ void loop() {
     delay(500);  // try again in a bit!
     return;
   }
-  Serial.println("AQI reading success");
 
   Serial.println(F("---------------------------------------"));
   Serial.println(F("Concentration Units (standard)"));
@@ -159,22 +173,10 @@ void loop() {
   Serial.print(F("\t\tPM 2.5: ")); Serial.print(data.pm25_standard);
   Serial.print(F("\t\tPM 10: ")); Serial.println(data.pm100_standard);
   Serial.println(F("---------------------------------------"));
-  Serial.println(F("Concentration Units (environmental)"));
-  Serial.print(F("PM 1.0: ")); Serial.print(data.pm10_env);
-  Serial.print(F("\t\tPM 2.5: ")); Serial.print(data.pm25_env);
-  Serial.print(F("\t\tPM 10: ")); Serial.println(data.pm100_env);
-  Serial.println(F("---------------------------------------"));
-  Serial.print(F("Particles > 0.3um / 0.1L air:")); Serial.println(data.particles_03um);
-  Serial.print(F("Particles > 0.5um / 0.1L air:")); Serial.println(data.particles_05um);
-  Serial.print(F("Particles > 1.0um / 0.1L air:")); Serial.println(data.particles_10um);
-  Serial.print(F("Particles > 2.5um / 0.1L air:")); Serial.println(data.particles_25um);
-  Serial.print(F("Particles > 5.0um / 0.1L air:")); Serial.println(data.particles_50um);
-  Serial.print(F("Particles > 10 um / 0.1L air:")); Serial.println(data.particles_100um);
-  Serial.println(F("---------------------------------------"));
-  Serial.println(F("AQI"));
-  Serial.print(F("PM2.5 AQI US: ")); Serial.print(data.aqi_pm25_us);
-  Serial.print(F("\tPM10  AQI US: ")); Serial.println(data.aqi_pm100_us);
-  Serial.println(F("---------------------------------------"));
   Serial.println();
-
+  lcd.setCursor(0, 0);
+  lcd.print("CO2:"+ String(co2Concentration)+" T: ");
+  //+String(temperatureF,0)
+  lcd.setCursor(0, 1);
+  lcd.print("PM2.5:"+String(data.pm25_standard)+" 10:"+String(data.pm100_standard));
 }
